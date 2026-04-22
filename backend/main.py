@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from google import genai
-from google.genai import types
+from openai import OpenAI
 import os
 import json
 from dotenv import load_dotenv
@@ -13,24 +12,26 @@ load_dotenv()
 
 app = FastAPI()
 
-#CORS設定ブロック
+# CORSの設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], # Next.jsからのアクセスを許可
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
-    allow_methods=["*"], # GETやPOSTなどを全て許可
-    allow_headers=["*"], # 全てのヘッダーを許可
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# 新しいSDKでのクライアント初期化（自動で環境変数の GEMINI_API_KEY を読み込みます）
-client = genai.Client()
+# OpenAIクライアントの初期化（自動で OPENAI_API_KEY を読み込みます）
+client = OpenAI()
 
+# ==========================================
 # 1. 質問リストを取得するAPI (GET)
+# ==========================================
 @app.get("/api/questions")
 def get_questions():
     prompt = """
-    以下の6つの質問を、指定されたJSON配列の形式で出力してください。
-    余計なテキストは一切含めないでください。
+    以下の6つの質問を作成し、JSON形式で出力してください。
+    必ず {"questions": [質問の配列]} という形式のJSONオブジェクトにしてください。
 
     【質問リスト】
     1. 【目的】リフレッシュ、自己研鑽、承認・交流、暇つぶしの中で、趣味を通して一番得たいものは何ですか？
@@ -40,31 +41,33 @@ def get_questions():
     5. 【生活環境】普段の仕事や生活はデスクワーク中心ですか？それとも体を動かすことが多いですか？
     6. 【MBTI】あなたのMBTI（16タイプ性格診断）を教えてください。（わからない場合はどのような性格と言われることが多いか教えてください）
 
-    【出力形式】
-    [
-      {"id": 1, "question": "質問内容1"},
-      {"id": 2, "question": "質問内容2"},
-      {"id": 3, "question": "質問内容3"},
-      {"id": 4, "question": "質問内容4"},
-      {"id": 5, "question": "質問内容5"},
-      {"id": 6, "question": "質問内容6"}
-    ]
+    【配列内の各アイテムの形式】
+    {"id": 1, "question": "質問内容"}
     """
     
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            ),
+        response = client.chat.completions.create(
+            model="gpt-4o-mini", # コストパフォーマンスが高い最新モデル
+            response_format={"type": "json_object"}, # 確実にJSONで返させる設定
+            messages=[
+                {"role": "system", "content": "あなたは優秀なアシスタントです。必ずJSONを出力します。"},
+                {"role": "user", "content": prompt}
+            ]
         )
-        questions_data = json.loads(response.text)
-        return {"status": "success", "data": questions_data}
+        
+        # OpenAIの返答からJSONテキストを取り出して辞書に変換
+        raw_json = response.choices[0].message.content
+        parsed_data = json.loads(raw_json)
+        
+        # "questions" キーの中身（配列）だけをフロントエンドに返す
+        return {"status": "success", "data": parsed_data.get("questions", [])}
+        
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ==========================================
 # 2. 回答を受け取って趣味を提案するAPI (POST)
+# ==========================================
 class Answer(BaseModel):
     question: str
     answer: str
@@ -79,31 +82,35 @@ def diagnose_hobbies(request: DiagnoseRequest):
         answers_text += f"質問: {item.question}\n回答: {item.answer}\n\n"
         
     prompt = f"""
-    あなたはプロの趣味アドバイザーです。以下のユーザーの回答を分析し、その人の目的やリソース、性格、過去の体験に最も適した趣味を厳選して3つ提案してください。
+    あなたはプロの趣味アドバイザーです。以下のユーザーの回答を分析し、最適な趣味を3つ提案してください。
+    必ず {{ "suggestions": [提案の配列] }} という形式のJSONオブジェクトで出力してください。
 
     【ユーザーの回答】
     {answers_text}
 
-    【出力要件】
-    以下のJSON配列の形式で出力してください。余計なテキストは一切含めないでください。
-    [
-      {{
-        "hobby_name": "趣味の名前",
-        "reason": "なぜこの趣味がおすすめなのか（ユーザーの回答のどの部分を踏まえたのか具体的に）",
-        "first_step": "今日から始められる具体的な第一歩"
-      }}
-    ]
+    【配列内の各アイテムの形式】
+    {{
+      "hobby_name": "趣味の名前",
+      "reason": "なぜこの趣味がおすすめなのか（ユーザーの回答のどの部分を踏まえたのか具体的に）",
+      "first_step": "今日から始められる具体的な第一歩"
+    }}
     """
     
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            ),
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "あなたはプロのアドバイザーです。必ず指示されたJSONフォーマットで出力します。"},
+                {"role": "user", "content": prompt}
+            ]
         )
-        suggestions_data = json.loads(response.text)
-        return {"status": "success", "data": suggestions_data}
+        
+        raw_json = response.choices[0].message.content
+        parsed_data = json.loads(raw_json)
+        
+        # "suggestions" キーの中身（配列）だけをフロントエンドに返す
+        return {"status": "success", "data": parsed_data.get("suggestions", [])}
+        
     except Exception as e:
         return {"status": "error", "message": str(e)}
