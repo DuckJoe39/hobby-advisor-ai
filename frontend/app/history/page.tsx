@@ -16,7 +16,7 @@ export default function HistoryPage() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/history");
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/questions`);
         const data = await res.json();
         if (data.status === "success") {
           setHistories(data.data);
