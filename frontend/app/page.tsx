@@ -1,18 +1,23 @@
-"use client"; // ← ユーザーの操作（入力やクリック）を受け付けるための設定
+"use client";
 
 import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import { Loader2, Sparkles, RefreshCcw, CheckCircle2, BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import Link from "next/link";
 
 export default function Home() {
-  // --- 画面の状態（State）を管理する変数たち ---
   const [questions, setQuestions] = useState<any[]>([]);
-  const [answers, setAnswers] = useState<{ [key: number]: string }>({});
+  const [selectedOptions, setSelectedOptions] = useState<{ [key: number]: string }>({});
+  const [otherTexts, setOtherTexts] = useState<{ [key: number]: string }>({});
   const [results, setResults] = useState<any[] | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [error, setError] = useState("");
 
-  // --- 1. 画面が開いた時に、質問リストを取得する ---
   useEffect(() => {
     const fetchQuestions = async () => {
       try {
@@ -24,7 +29,7 @@ export default function Home() {
           setError(data.message || "質問の取得に失敗しました");
         }
       } catch (err) {
-        setError("バックエンドサーバーに接続できません");
+        setError("サーバーに接続できません。バックエンドが起動しているか確認してください。");
       } finally {
         setIsLoading(false);
       }
@@ -32,27 +37,28 @@ export default function Home() {
     fetchQuestions();
   }, []);
 
-  // --- 2. テキストボックスの入力内容を保存する ---
-  const handleInputChange = (questionId: number, text: string) => {
-    setAnswers({
-      ...answers,
-      [questionId]: text, // 質問IDと入力されたテキストを紐付けて保存
-    });
+  const handleOptionSelect = (questionId: number, option: string) => {
+    setSelectedOptions({ ...selectedOptions, [questionId]: option });
   };
 
-  // --- 3. 「診断する！」ボタンが押された時の処理 ---
+  const handleOtherTextChange = (questionId: number, text: string) => {
+    setOtherTexts({ ...otherTexts, [questionId]: text });
+  };
+
   const handleSubmit = async () => {
     setIsDiagnosing(true);
     setError("");
     
-    // バックエンドの仕様に合わせて、データを整形する
-    const formattedAnswers = questions.map((q) => ({
-      question: q.question,
-      answer: answers[q.id] || "特になし", // 未入力の場合は「特になし」とする
-    }));
+    const formattedAnswers = questions.map((q) => {
+      let finalAnswer = "特になし";
+      const selected = selectedOptions[q.id];
+      if (selected) {
+        finalAnswer = selected === "その他" ? (otherTexts[q.id] || "特になし") : selected;
+      }
+      return { question: q.question, answer: finalAnswer };
+    });
 
     try {
-      // POSTリクエストでバックエンドに回答データを送る
       const res = await fetch("http://127.0.0.1:8000/api/diagnose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,7 +67,7 @@ export default function Home() {
       
       const data = await res.json();
       if (data.status === "success") {
-        setResults(data.data); // 診断結果をセット！
+        setResults(data.data);
       } else {
         setError(data.message || "診断に失敗しました");
       }
@@ -72,93 +78,175 @@ export default function Home() {
     }
   };
 
-  // --- 画面の描画（HTML/Tailwind CSS） ---
   return (
-    <main className="min-h-screen p-8 bg-slate-50 text-gray-800 font-sans">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-4xl font-extrabold mb-8 text-center text-blue-600 tracking-tight">
-          AI 趣味アドバイザー
-        </h1>
+    <main className="min-h-screen p-6 md:p-12 bg-slate-50 text-slate-900 font-sans">
+      <div className="max-w-3xl mx-auto space-y-8">
+        
+        {/* ヘッダー */}
+        <div className="text-center space-y-3 relative">
+          <div className="absolute right-0 top-0">
+            <Link href="/history">
+              <Button variant="outline" size="sm" className="rounded-full">
+                <BookOpen className="w-4 h-4 mr-2" />
+                履歴
+              </Button>
+            </Link>
+          </div>
+          <div className="inline-flex items-center justify-center p-3 bg-blue-100 rounded-full mb-2">
+            <Sparkles className="w-8 h-8 text-blue-600" />
+          </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900">
+            AI 趣味アドバイザー
+          </h1>
+          <p className="text-slate-500">あなたの価値観から、ぴったりな趣味を提案します。</p>
+        </div>
 
-        {/* エラーメッセージの表示 */}
         {error && (
-          <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg shadow-sm border border-red-200">
-            {error}
-          </div>
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="pt-6 text-red-600 flex items-center gap-2">
+              <span>{error}</span>
+            </CardContent>
+          </Card>
         )}
 
-        {/* 読み込み中の表示 */}
+        {/* ローディング状態 */}
         {isLoading && (
-          <div className="text-center text-gray-500 animate-pulse">
-            質問リストを準備中...
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+            <p>AIが質問リストを準備中...</p>
           </div>
         )}
 
-        {/* 質問と入力欄のリスト表示 */}
+        {/* 質問フォーム */}
         {!isLoading && !results && (
-          <div className="space-y-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {questions.map((q) => (
-              <div key={q.id} className="flex flex-col">
-                <label className="font-semibold text-lg mb-2 text-gray-700">
-                  <span className="text-blue-500 mr-2">Q{q.id}.</span>
-                  {q.question}
-                </label>
-                <textarea
-                  className="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none transition-all resize-y min-h-[100px]"
-                  placeholder="回答を入力してください（未入力でもOKです）"
-                  value={answers[q.id] || ""}
-                  onChange={(e) => handleInputChange(q.id, e.target.value)}
-                />
-              </div>
+              <Card key={q.id} className="overflow-hidden border-slate-200 shadow-sm transition-all hover:shadow-md">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-lg mb-4 text-slate-800 flex items-start gap-2">
+                    <span className="text-blue-500 font-bold shrink-0">Q{q.id}.</span>
+                    {q.question}
+                  </h3>
+                  
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {q.options?.map((opt: string) => (
+                      <Button
+                        key={opt}
+                        variant={selectedOptions[q.id] === opt ? "default" : "outline"}
+                        className={`rounded-full transition-all ${
+                          selectedOptions[q.id] === opt ? "bg-blue-600 hover:bg-blue-700 shadow-md text-white" : ""
+                        }`}
+                        onClick={() => handleOptionSelect(q.id, opt)}
+                      >
+                        {selectedOptions[q.id] === opt && <CheckCircle2 className="w-4 h-4 mr-1" />}
+                        {opt}
+                      </Button>
+                    ))}
+                    
+                    <Button
+                      variant={selectedOptions[q.id] === "その他" ? "default" : "outline"}
+                      className={`rounded-full transition-all ${
+                        selectedOptions[q.id] === "その他" ? "bg-slate-800 hover:bg-slate-900 shadow-md text-white" : ""
+                      }`}
+                      onClick={() => handleOptionSelect(q.id, "その他")}
+                    >
+                      その他
+                    </Button>
+                  </div>
+
+                  {selectedOptions[q.id] === "その他" && (
+                    <div className="mt-4 animate-in slide-in-from-top-2 duration-200">
+                      <Textarea
+                        placeholder="詳細を教えてください（未入力でも構いません）"
+                        value={otherTexts[q.id] || ""}
+                        onChange={(e) => handleOtherTextChange(q.id, e.target.value)}
+                        className="bg-slate-50 focus-visible:ring-blue-500"
+                        autoFocus
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             ))}
 
-            {/* 診断ボタン */}
-            <div className="text-center pt-6">
-              <button
+            <div className="text-center pt-8 pb-12">
+              <Button
+                size="lg"
                 onClick={handleSubmit}
                 disabled={isDiagnosing}
-                className="px-10 py-4 bg-blue-600 text-white text-lg font-bold rounded-full hover:bg-blue-700 active:transform active:scale-95 transition-all shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="rounded-full px-8 text-lg bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all h-14 text-white"
               >
-                {isDiagnosing ? "AIが分析中..." : "診断する！"}
-              </button>
+                {isDiagnosing ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    AIが分析中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    趣味を診断する！
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         )}
 
-        {/* 診断結果の表示 */}
+        {/* 診断結果 */}
         {results && (
-          <div className="space-y-6 animate-fade-in-up">
-            <h2 className="text-3xl font-bold text-center mb-8 text-gray-800 border-b pb-4">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <h2 className="text-2xl font-bold text-center text-slate-800 pb-2 border-b-2 border-slate-200">
               あなたへのおすすめの趣味
             </h2>
-            {results.map((result: any, index: number) => (
-              <div key={index} className="bg-white p-6 rounded-2xl shadow-md border-l-4 border-blue-500 hover:shadow-lg transition-shadow">
-                <h3 className="text-2xl font-bold text-blue-700 mb-3">
-                  {index + 1}. {result.hobby_name}
-                </h3>
-                <div className="mb-4">
-                  <p className="font-semibold text-gray-600 text-sm mb-1">【おすすめの理由】</p>
-                  <p className="text-gray-800 leading-relaxed">{result.reason}</p>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <p className="font-semibold text-blue-800 text-sm mb-1">【まずはここから！】</p>
-                  <p className="text-blue-900">{result.first_step}</p>
-                </div>
-              </div>
-            ))}
             
-            {/* もう一度やり直すボタン */}
-            <div className="text-center mt-10">
-              <button
+            <div className="grid gap-6">
+              {results.map((result: any, index: number) => (
+                <Card key={index} className="overflow-hidden border-l-4 border-l-blue-500 shadow-md">
+                  <CardContent className="p-6 md:p-8">
+                    <h3 className="text-2xl font-bold text-slate-800 mb-4 flex items-center gap-3">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm">
+                        {index + 1}
+                      </span>
+                      {result.hobby_name}
+                    </h3>
+                    
+                    <div className="space-y-4 text-slate-700">
+                      <div className="bg-slate-50 p-4 rounded-lg">
+                        <p className="font-semibold text-slate-900 mb-2 text-sm">【おすすめの理由】</p>
+                        <div className="prose prose-slate prose-sm max-w-none">
+                          <ReactMarkdown>{result.reason}</ReactMarkdown>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <p className="font-semibold text-blue-900 mb-2 text-sm flex items-center gap-1">
+                          <Sparkles className="w-4 h-4" /> まずはここから！
+                        </p>
+                        <div className="prose prose-slate prose-sm max-w-none text-blue-800">
+                          <ReactMarkdown>{result.first_step}</ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            
+            <div className="text-center pt-8 pb-12">
+              <Button
+                variant="outline"
+                size="lg"
                 onClick={() => {
                   setResults(null);
-                  setAnswers({});
+                  setSelectedOptions({});
+                  setOtherTexts({});
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
-                className="text-blue-600 underline hover:text-blue-800"
+                className="rounded-full"
               >
+                <RefreshCcw className="w-4 h-4 mr-2" />
                 もう一度診断する
-              </button>
+              </Button>
             </div>
           </div>
         )}
