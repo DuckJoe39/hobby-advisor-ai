@@ -16,7 +16,7 @@ export default function HistoryPage() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/questions`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/history`);
         const data = await res.json();
         if (data.status === "success") {
           setHistories(data.data);
@@ -90,7 +90,7 @@ export default function HistoryPage() {
                       <CardTitle className="text-sm font-bold text-slate-500 uppercase tracking-wider">あなたの回答</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {item.answers.map((ans: any, idx: number) => (
+                      {item.answers?.map((ans: any, idx: number) => (
                         <div key={idx} className="text-xs">
                           <p className="font-semibold text-slate-700 line-clamp-1">{ans.question}</p>
                           <p className="text-slate-600 italic">→ {ans.answer}</p>
@@ -101,7 +101,7 @@ export default function HistoryPage() {
 
                   {/* 提案された趣味 */}
                   <div className="lg:col-span-2 grid gap-4">
-                    {item.suggestions.map((sug: any, idx: number) => (
+                    {item.suggestions?.map((sug: any, idx: number) => (
                       <Card key={idx} className="shadow-sm border-slate-200">
                         <CardContent className="p-4">
                           <h4 className="font-bold text-blue-700 flex items-center gap-2 mb-2">
